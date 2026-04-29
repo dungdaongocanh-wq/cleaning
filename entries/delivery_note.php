@@ -25,16 +25,14 @@ if (!$header) { redirect(BASE_URL . '/entries/index.php'); }
 
 // Query lines
 $stmt2 = $pdo->prepare("
-    SELECT el.qty, el.unit_price_snapshot, el.line_total,
-           cm.model_code, cm.model_name, cm.unit
+    SELECT el.qty, cm.model_code, cm.model_name, cm.unit
     FROM entry_lines el
     JOIN customer_models cm ON cm.id = el.customer_model_id
     WHERE el.entry_header_id = ?
     ORDER BY cm.sort_order, cm.model_code
 ");
 $stmt2->execute([$id]);
-$lines      = $stmt2->fetchAll();
-$grandTotal = array_sum(array_column($lines, 'line_total'));
+$lines = $stmt2->fetchAll();
 
 $bbNumber = 'BBGH-' . str_pad((string)$id, 4, '0', STR_PAD_LEFT);
 $bbDate   = date('d/m/Y', strtotime($header['entry_date']));
@@ -49,56 +47,91 @@ $bbDate   = date('d/m/Y', strtotime($header['entry_date']));
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <style>
     body { background: #f0f0f0; font-family: 'Times New Roman', Times, serif; }
+
     .page {
       background: #fff;
       width: 210mm;
       min-height: 297mm;
       margin: 20px auto;
-      padding: 20mm 20mm 15mm;
-      box-shadow: 0 0 10px rgba(0,0,0,.15);
-      position: relative;
+      padding: 15mm 18mm 15mm;
+      box-shadow: 0 0 12px rgba(0,0,0,.18);
     }
-    .doc-title { font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
-    .doc-meta   { font-size: 14px; color: #444; }
-    .party-label { font-weight: bold; font-size: 13px; text-transform: uppercase; border-bottom: 1px solid #333; padding-bottom: 4px; margin-bottom: 8px; }
-    .party-info p { margin: 3px 0; font-size: 13px; }
-    table.goods { width: 100%; border-collapse: collapse; font-size: 13px; }
-    table.goods th, table.goods td { border: 1px solid #555; padding: 6px 8px; }
-    table.goods thead th { background: #f5f5f5; text-align: center; font-weight: bold; }
+
+    /* Tiêu đề */
+    .doc-title   { font-size: 20px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+    .doc-meta    { font-size: 13px; color: #444; }
+
+    /* Bên giao / bên nhận */
+    .party-label { font-weight: bold; font-size: 12px; text-transform: uppercase;
+                   border-bottom: 1px solid #333; padding-bottom: 3px; margin-bottom: 6px; }
+    .party-info p { margin: 2px 0; font-size: 12px; }
+
+    /* Bảng hàng hóa */
+    table.goods { width: 100%; border-collapse: collapse; font-size: 12px; }
+    table.goods th, table.goods td {
+      border: 1px solid #555; padding: 5px 6px; vertical-align: middle;
+    }
+    table.goods thead th {
+      background: #f0f0f0; text-align: center; font-weight: bold; line-height: 1.4;
+    }
     table.goods td.num   { text-align: center; }
     table.goods td.right { text-align: right; }
-    .total-row td { font-weight: bold; background: #fafafa; }
-    .sign-section { margin-top: 30px; }
-    .sign-box { text-align: center; }
-    .sign-box .sign-title { font-weight: bold; font-size: 13px; text-transform: uppercase; }
-    .sign-box .sign-hint  { font-size: 11px; color: #888; font-style: italic; }
-    .sign-space { height: 70px; }
-    .footer-note { font-size: 11px; color: #888; text-align: center; margin-top: 20px; }
-    .no-print-bar { background: #fff; padding: 10px 0; text-align: center; border-bottom: 1px solid #ddd; }
+    .total-row td { font-weight: bold; background: #fafafa; text-align: center; }
 
+    /* Input trong bảng */
+    table.goods input.cell-input {
+      border: none; outline: none; background: transparent;
+      width: 100%; text-align: center; font-size: 12px;
+      font-family: 'Times New Roman', Times, serif;
+    }
+    table.goods input.cell-input:focus { background: #fffde7; }
+
+    /* Tổng trọng lượng cuối bảng */
+    #totalNetWeight, #totalGrossWeight, #totalPallet { font-weight: bold; }
+
+    /* Phần ký */
+    .sign-section { margin-top: 28px; }
+    .sign-box { text-align: center; padding: 0 5px; }
+    .sign-box .sign-title { font-weight: bold; font-size: 12px; text-transform: uppercase; }
+    .sign-box .sign-hint  { font-size: 11px; color: #888; font-style: italic; margin-bottom: 4px; }
+    .sign-space { height: 65px; border-bottom: 1px dotted #aaa; margin: 0 10px; }
+    .sign-name  { margin-top: 4px; font-size: 12px; height: 18px; }
+
+    .footer-note { font-size: 11px; color: #888; text-align: center; margin-top: 18px; }
+
+    /* Toolbar */
+    .toolbar { background: #fff; padding: 10px 0; text-align: center;
+               border-bottom: 1px solid #ddd; position: sticky; top: 0; z-index: 100; }
+
+    /* In ấn */
     @media print {
-      .no-print { display: none !important; }
-      body { background: #fff; margin: 0; }
-      .page { margin: 0; box-shadow: none; padding: 15mm 20mm; width: auto; min-height: auto; }
+      .no-print  { display: none !important; }
+      body        { background: #fff; margin: 0; }
+      .page       { margin: 0; box-shadow: none; padding: 10mm 15mm; width: auto; min-height: auto; }
+      table.goods input.cell-input { border: none !important; background: transparent !important; }
     }
     @page { size: A4; margin: 0; }
   </style>
 </head>
 <body>
 
-<!-- Toolbar (ẩn khi in) -->
-<div class="no-print no-print-bar">
+<!-- ── Toolbar ─────────────────────────────────────────── -->
+<div class="toolbar no-print">
   <button class="btn btn-primary me-2" onclick="window.print()">
     <i class="bi bi-printer me-1"></i>In biên bản
   </button>
   <a href="index.php" class="btn btn-outline-secondary">
-    <i class="bi bi-arrow-left me-1"></i>Quay lại
+    <i class="bi bi-arrow-left me-1"></i>Quay lại danh sách
   </a>
+  <span class="ms-4 text-muted small">
+    <i class="bi bi-info-circle me-1"></i>
+    Điền vào các ô <span style="background:#fffde7;padding:1px 4px;border-radius:3px">trọng lượng, số pallet, ghi chú</span> trước khi in.
+  </span>
 </div>
 
 <div class="page">
 
-  <!-- ── Tiêu đề ─────────────────────────────────────── -->
+  <!-- ── Tiêu đề ─────────────────────────────────────────── -->
   <div class="text-center mb-3">
     <div class="doc-title">Biên bản giao hàng</div>
     <div class="doc-meta mt-1">
@@ -108,16 +141,15 @@ $bbDate   = date('d/m/Y', strtotime($header['entry_date']));
     </div>
   </div>
 
-  <!-- ── Bên giao / Bên nhận ─────────────────────────── -->
+  <!-- ── Bên giao / Bên nhận ─────────────────────────────── -->
   <div class="row mb-3">
     <div class="col-6 pe-4">
       <div class="party-label">Bên giao</div>
       <div class="party-info">
         <p><strong><?= e(COMPANY_NAME) ?></strong></p>
         <p>Địa chỉ: <?= e(COMPANY_ADDRESS) ?></p>
-        <p>MST: <?= e(COMPANY_TAX) ?></p>
-        <p>Điện thoại: <?= e(COMPANY_PHONE) ?></p>
-        <p>Ngân hàng: <?= e(COMPANY_BANK) ?></p>
+        <p>MST: <?= e(COMPANY_TAX) ?>&nbsp;&nbsp;|&nbsp;&nbsp;ĐT: <?= e(COMPANY_PHONE) ?></p>
+        <p>NH: <?= e(COMPANY_BANK) ?></p>
         <p>Số TK: <?= e(COMPANY_ACCOUNT) ?></p>
       </div>
     </div>
@@ -128,60 +160,94 @@ $bbDate   = date('d/m/Y', strtotime($header['entry_date']));
         <p>Địa chỉ: <?= e($header['cust_address'] ?? '') ?></p>
         <p>MST: <?= e($header['cust_tax'] ?? '') ?></p>
         <p>Liên hệ: <?= e($header['contact_name'] ?? '') ?>
-          <?php if (!empty($header['contact_phone'])): ?> — <?= e($header['contact_phone']) ?><?php endif; ?></p>
-        <p>Ngân hàng: <?= e($header['cust_bank'] ?? '') ?></p>
-        <p>Số TK: <?= e($header['cust_account'] ?? '') ?></p>
+          <?php if (!empty($header['contact_phone'])): ?>&nbsp;—&nbsp;<?= e($header['contact_phone']) ?><?php endif; ?>
+        </p>
+        <p>NH: <?= e($header['cust_bank'] ?? '') ?>&nbsp;&nbsp;|&nbsp;&nbsp;Số TK: <?= e($header['cust_account'] ?? '') ?></p>
       </div>
     </div>
   </div>
 
-  <!-- ── Bảng hàng hóa ──────────────────────────────── -->
+  <!-- ── Bảng hàng hóa ───────────────────────────────────── -->
   <table class="goods mb-2">
     <thead>
       <tr>
-        <th style="width:4%">#</th>
-        <th style="width:12%">Mã hàng</th>
-        <th>Tên hàng</th>
-        <th style="width:7%">ĐVT</th>
-        <th style="width:9%">Số lượng</th>
-        <th style="width:13%">Đơn giá (đ)</th>
-        <th style="width:14%">Thành tiền (đ)</th>
+        <th rowspan="2" style="width:4%">STT<br>(No)</th>
+        <th rowspan="2" style="width:14%">Loại hàng<br>(Item)</th>
+        <th rowspan="2">Mã hàng</th>
+        <th rowspan="2" style="width:9%">Số lượng<br>(EA)</th>
+        <th rowspan="2" style="width:11%">Trọng lượng tịnh<br>(kgs)</th>
+        <th rowspan="2" style="width:12%">Tổng trọng lượng<br>(kgs)</th>
+        <th rowspan="2" style="width:11%">Số pallet/<br>box</th>
+        <th rowspan="2" style="width:14%">Ghi chú</th>
       </tr>
     </thead>
     <tbody>
       <?php foreach ($lines as $i => $line): ?>
       <tr>
         <td class="num"><?= $i + 1 ?></td>
+        <td class="num"><?= e($line['model_name']) ?></td>
         <td><?= e($line['model_code']) ?></td>
-        <td><?= e($line['model_name']) ?></td>
-        <td class="num"><?= e($line['unit'] ?? '') ?></td>
         <td class="num"><?= formatNum((float)$line['qty']) ?></td>
-        <td class="right"><?= formatVND((float)$line['unit_price_snapshot']) ?></td>
-        <td class="right"><?= formatVND((float)$line['line_total']) ?></td>
+        <td class="num">
+          <input type="number" class="cell-input net-weight" min="0" step="0.01"
+                 placeholder="0" oninput="calcTotals()">
+        </td>
+        <td class="num">
+          <input type="number" class="cell-input gross-weight" min="0" step="0.01"
+                 placeholder="0" oninput="calcTotals()">
+        </td>
+        <td class="num">
+          <input type="number" class="cell-input pallet-count" min="0" step="1"
+                 placeholder="0" oninput="calcTotals()">
+        </td>
+        <td>
+          <input type="text" class="cell-input" placeholder="">
+        </td>
       </tr>
       <?php endforeach; ?>
+      <!-- Dòng tổng -->
       <tr class="total-row">
-        <td colspan="6" class="right">TỔNG CỘNG</td>
-        <td class="right"><?= formatVND((float)$grandTotal) ?></td>
+        <td colspan="3">TỔNG CỘNG</td>
+        <td id="totalQty"><?= formatNum((float)array_sum(array_column($lines, 'qty'))) ?></td>
+        <td id="totalNetWeight">0</td>
+        <td id="totalGrossWeight">0</td>
+        <td id="totalPallet">0</td>
+        <td></td>
       </tr>
     </tbody>
   </table>
 
   <?php if (!empty($header['note'])): ?>
-  <p class="mb-3" style="font-size:13px"><em>Ghi chú: <?= e($header['note']) ?></em></p>
+  <p style="font-size:12px; margin-bottom:6px"><em>Ghi chú: <?= e($header['note']) ?></em></p>
   <?php endif; ?>
 
-  <!-- ── Chữ ký ──────────────────────────────────────── -->
-  <div class="sign-section row">
-    <div class="col-6 sign-box">
-      <div class="sign-title">Đại diện bên giao</div>
-      <div class="sign-hint">(Ký, ghi rõ họ tên)</div>
-      <div class="sign-space"></div>
-    </div>
-    <div class="col-6 sign-box">
-      <div class="sign-title">Đại diện bên nhận</div>
-      <div class="sign-hint">(Ký, ghi rõ họ tên)</div>
-      <div class="sign-space"></div>
+  <!-- ── Chữ ký ──────────────────────────────────────────── -->
+  <div class="sign-section">
+    <div class="row">
+      <div class="col-3 sign-box">
+        <div class="sign-title">Người giao</div>
+        <div class="sign-hint">(Ký, ghi rõ họ tên)</div>
+        <div class="sign-space"></div>
+        <div class="sign-name"></div>
+      </div>
+      <div class="col-3 sign-box">
+        <div class="sign-title">Lái xe</div>
+        <div class="sign-hint">(Ký, ghi rõ họ tên)</div>
+        <div class="sign-space"></div>
+        <div class="sign-name"></div>
+      </div>
+      <div class="col-3 sign-box">
+        <div class="sign-title">Bảo vệ</div>
+        <div class="sign-hint">(Ký, ghi rõ họ tên)</div>
+        <div class="sign-space"></div>
+        <div class="sign-name"></div>
+      </div>
+      <div class="col-3 sign-box">
+        <div class="sign-title">Người nhận</div>
+        <div class="sign-hint">(Ký, ghi rõ họ tên)</div>
+        <div class="sign-space"></div>
+        <div class="sign-name"></div>
+      </div>
     </div>
   </div>
 
@@ -189,6 +255,19 @@ $bbDate   = date('d/m/Y', strtotime($header['entry_date']));
 
 </div><!-- /.page -->
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function fmt(n) {
+    return new Intl.NumberFormat('vi-VN').format(Math.round(n * 100) / 100);
+}
+function calcTotals() {
+    let net = 0, gross = 0, pallet = 0;
+    document.querySelectorAll('.net-weight').forEach(function(i)    { net    += parseFloat(i.value) || 0; });
+    document.querySelectorAll('.gross-weight').forEach(function(i)  { gross  += parseFloat(i.value) || 0; });
+    document.querySelectorAll('.pallet-count').forEach(function(i)  { pallet += parseFloat(i.value) || 0; });
+    document.getElementById('totalNetWeight').textContent   = fmt(net);
+    document.getElementById('totalGrossWeight').textContent = fmt(gross);
+    document.getElementById('totalPallet').textContent      = fmt(pallet);
+}
+</script>
 </body>
 </html>
