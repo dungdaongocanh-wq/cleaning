@@ -223,13 +223,19 @@ async function loadServices() {
         );
         const data = await res.json();
         const tbody = document.getElementById('linesBody');
-        tbody.innerHTML = '';
 
-        data.forEach(function(item, i) {
+        // Lấy các model_id đã có trong bảng
+        const existingIds = new Set(
+            [...tbody.querySelectorAll('input[name="model_id[]"]')].map(i => i.value)
+        );
+
+        data.forEach(function(item) {
+            // Bỏ qua nếu đã tồn tại
+            if (existingIds.has(String(item.id))) return;
+
             const tpl = document.getElementById('rowTemplate').content.cloneNode(true);
             const tr  = tpl.querySelector('tr');
 
-            tr.querySelector('.row-num').textContent            = i + 1;
             tr.querySelector('.model-code-display').textContent = item.model_code;
             tr.querySelector('.model-name-display').textContent = item.model_name || '';
             tr.querySelector('.unit-display').textContent       = item.unit;
@@ -239,6 +245,9 @@ async function loadServices() {
 
             tbody.appendChild(tpl);
         });
+
+        // Reindex lại số thứ tự tất cả dòng
+        reindex();
 
         bindLineEvents();
         updateTotal();

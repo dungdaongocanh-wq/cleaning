@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 define('APP_NAME',    'Cleaning Management System');
-define('BASE_URL',    'http://liprologi.com/cleaning_app');  // ← SỬA DÒNG NÀY
+define('BASE_URL',    'https://liprologi.com/cleaning_app');
 
 define('COMPANY_NAME',    'CÔNG TY CỔ PHẦN SẢN XUẤT VÀ CUNG ỨNG ECOTECH VINA');
 define('COMPANY_SHORT',   'ECOTECH VINA');
