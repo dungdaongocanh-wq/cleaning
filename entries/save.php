@@ -64,7 +64,7 @@ try {
 
     $pdo->commit();
     setFlash('success', 'Lưu phiếu thành công!');
-    redirect(BASE_URL . '/entries/index.php');
+    redirect(BASE_URL . '/entries/delivery_note.php?id=' . $id);
 } catch (Exception $e) {
     $pdo->rollBack();
     setFlash('danger', 'Lỗi: ' . $e->getMessage());

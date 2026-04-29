@@ -107,6 +107,12 @@ include __DIR__ . '/../includes/sidebar.php';
           <td class="small text-muted"><?= e($row['creator']) ?></td>
           <td class="small text-muted"><?= date('d/m H:i', strtotime($row['updated_at'])) ?></td>
           <td class="text-nowrap">
+            <a href="delivery_note.php?id=<?= $row['id'] ?>"
+               class="btn btn-sm btn-outline-info"
+               title="In biên bản giao hàng"
+               target="_blank">
+              <i class="bi bi-printer"></i>
+            </a>
             <a href="form.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-outline-warning" title="Sửa">
               <i class="bi bi-pencil"></i>
             </a>
