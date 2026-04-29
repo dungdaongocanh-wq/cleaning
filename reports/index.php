@@ -258,16 +258,57 @@ include __DIR__ . '/../includes/sidebar.php';
 </div>
 
 <!-- Nút xuất -->
-<div class="d-flex gap-2 flex-wrap">
+<div class="d-flex gap-2 flex-wrap align-items-center">
   <a href="export_excel.php?month=<?= urlencode($fMonth) ?>&customer_id=<?= $fCustomer ?>&type=report"
      class="btn btn-success btn-lg">
     <i class="bi bi-file-earmark-excel me-1"></i>Xuất Bảng kê Excel
   </a>
-  <a href="export_excel.php?month=<?= urlencode($fMonth) ?>&customer_id=<?= $fCustomer ?>&type=invoice"
-     class="btn btn-primary btn-lg">
-    <i class="bi bi-receipt me-1"></i>Xuất Hóa đơn VAT
-  </a>
+
+  <button type="button" id="btnPushInvoice" class="btn btn-primary btn-lg"
+          data-month="<?= e($fMonth) ?>"
+          data-customer="<?= $fCustomer ?>">
+    <i class="bi bi-receipt me-1"></i>Xuất Hóa đơn VAT (BKAV)
+  </button>
+
+  <span id="invoiceStatus" class="ms-2"></span>
 </div>
+
+<script>
+document.getElementById('btnPushInvoice').addEventListener('click', async function () {
+    const btn    = this;
+    const status = document.getElementById('invoiceStatus');
+    const month  = btn.dataset.month;
+    const cust   = btn.dataset.customer;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang gửi...';
+    status.innerHTML = '';
+
+    try {
+        const res  = await fetch('<?= BASE_URL ?>/reports/push_invoice.php', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ month: month, customer_id: parseInt(cust) }),
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            status.innerHTML = '<span class="badge bg-success fs-6">'
+                + '<i class="bi bi-check-circle me-1"></i>'
+                + 'Thành công! Số HĐ: ' + (data.invoiceNo || '') + '</span>';
+        } else {
+            status.innerHTML = '<span class="badge bg-danger fs-6">'
+                + '<i class="bi bi-x-circle me-1"></i>'
+                + (data.message || 'Lỗi không xác định') + '</span>';
+        }
+    } catch (err) {
+        status.innerHTML = '<span class="badge bg-danger fs-6">Lỗi kết nối: ' + err.message + '</span>';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-receipt me-1"></i>Xuất Hóa đơn VAT (BKAV)';
+    }
+});
+</script>
 
 <?php elseif ($fCustomer && !$reportData): ?>
   <div class="alert alert-info">
