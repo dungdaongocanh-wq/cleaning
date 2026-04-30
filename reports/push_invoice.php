@@ -122,16 +122,34 @@ try {
     }
 
     // Parse SOAP XML → lấy kết quả
-    $xml = @simplexml_load_string($soapResp);
+    $xml = @simplexml_load_string(trim($soapResp));
     if (!$xml) {
         echo json_encode(['success' => false, 'message' => 'Phản hồi SOAP không hợp lệ.', 'raw' => substr($soapResp, 0, 1000)]);
         exit;
     }
-    $xml->registerXPathNamespace('s', 'http://schemas.xmlsoap.org/soap/envelope/');
-    $nodes = $xml->xpath('//*[local-name()="PublicPostInvoiceDataResult"]');
+
+    // Kiểm tra SOAP Fault
+    $faultNodes = $xml->xpath('//*[local-name()="Fault"]');
+    if (!empty($faultNodes)) {
+        $fault       = $faultNodes[0];
+        $faultString = (string)($fault->faultstring ?? 'SOAP Fault không xác định');
+        echo json_encode([
+            'success' => false,
+            'message' => 'BKAV từ chối yêu cầu: ' . $faultString,
+            'raw'     => substr($soapResp, 0, 1000),
+        ]);
+        exit;
+    }
+
+    // Lấy kết quả từ ExecuteCommandResult (theo WSDL: method = ExecuteCommand)
+    $nodes = $xml->xpath('//*[local-name()="ExecuteCommandResult"]');
 
     if (empty($nodes)) {
-        echo json_encode(['success' => false, 'message' => 'Không tìm thấy kết quả trong phản hồi SOAP.', 'raw' => substr($soapResp, 0, 1000)]);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Không tìm thấy kết quả trong phản hồi SOAP.',
+            'raw'     => substr($soapResp, 0, 1000),
+        ]);
         exit;
     }
 
@@ -143,19 +161,19 @@ try {
     // Nếu không phải plain JSON thì decrypt rồi parse
     if ($result === null) {
         $resultJson = bkavDecrypt($resultEncrypted);
-        $result = json_decode($resultJson, true);
+        $result     = json_decode($resultJson, true);
         if ($result === null) {
             echo json_encode([
                 'success' => false,
                 'message' => 'Không parse được JSON từ BKAV.',
-                'raw'     => substr($resultJson, 0, 1000),
+                'raw'     => substr($resultJson, 0, 500),
             ]);
             exit;
         }
     }
 
-    $success   = isset($result['Status']) && $result['Status'] === 0;
-    $errMsg    = $result['Message'] ?? ($result['Desc'] ?? 'Lỗi không xác định từ BKAV');
+    $success           = isset($result['Status']) && $result['Status'] === 0;
+    $errMsg            = $result['Message'] ?? ($result['Desc'] ?? 'Lỗi không xác định từ BKAV');
     $returnedInvoiceNo = $result['InvoiceNo'] ?? $result['InvoiceNumber'] ?? $invoiceNo;
 
     echo json_encode([
@@ -179,7 +197,10 @@ function bkavEncrypt(string $data): string
     $iv  = base64_decode(BKAV_AES_IV);
     $gz  = gzencode($data, 6);
     $enc = openssl_encrypt($gz, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
-    return base64_encode((string)$enc);
+    if ($enc === false) {
+        throw new \RuntimeException('openssl_encrypt thất bại: ' . openssl_error_string());
+    }
+    return base64_encode($enc);
 }
 
 function bkavDecrypt(string $data): string
@@ -189,7 +210,7 @@ function bkavDecrypt(string $data): string
     $raw = base64_decode($data);
     $dec = openssl_decrypt($raw, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
     if ($dec === false) {
-        throw new \RuntimeException('bkavDecrypt: openssl_decrypt thất bại — kiểm tra BKAV_AES_KEY / BKAV_AES_IV. Raw (100 ký tự đầu): ' . substr($data, 0, 100));
+        throw new \RuntimeException('openssl_decrypt thất bại — kiểm tra BKAV_AES_KEY / BKAV_AES_IV');
     }
     $ungz = @gzdecode($dec);
     return $ungz !== false ? $ungz : $dec;
@@ -197,15 +218,20 @@ function bkavDecrypt(string $data): string
 
 function bkavSoapCall(string $encryptedData): string
 {
+    // Theo WSDL thực tế của BKAV (https://ws.ehoadon.vn/WSPublicEhoadon.asmx?WSDL):
+    //   - Method      : ExecuteCommand
+    //   - SOAPAction  : http://tempuri.org/ExecuteCommand
+    //   - Params      : PartnerGUID + EncryptedCommandData
+    //   - Result node : ExecuteCommandResult
     $xml = '<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                xmlns:xsd="http://www.w3.org/2001/XMLSchema"
                xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
-    <PublicPostInvoiceData xmlns="http://tempuri.org/">
+    <ExecuteCommand xmlns="http://tempuri.org/">
       <PartnerGUID>' . BKAV_PARTNER_GUID . '</PartnerGUID>
-      <CommandData>' . htmlspecialchars($encryptedData, ENT_XML1) . '</CommandData>
-    </PublicPostInvoiceData>
+      <EncryptedCommandData>' . htmlspecialchars($encryptedData, ENT_XML1) . '</EncryptedCommandData>
+    </ExecuteCommand>
   </soap:Body>
 </soap:Envelope>';
 
@@ -214,10 +240,10 @@ function bkavSoapCall(string $encryptedData): string
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $xml,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HEADER         => false,
+        CURLOPT_ENCODING       => '',   // tự động xử lý gzip/br/deflate
         CURLOPT_HTTPHEADER     => [
             'Content-Type: text/xml; charset=utf-8',
-            'SOAPAction: "http://tempuri.org/PublicPostInvoiceData"',
+            'SOAPAction: "http://tempuri.org/ExecuteCommand"',
             'Content-Length: ' . strlen($xml),
         ],
         CURLOPT_TIMEOUT        => 30,
@@ -232,7 +258,7 @@ function bkavSoapCall(string $encryptedData): string
         throw new \RuntimeException('cURL error: ' . $err);
     }
     if ($httpCode !== 200) {
-        throw new \RuntimeException('BKAV trả về HTTP ' . $httpCode . '. Response: ' . substr((string)$resp, 0, 1000));
+        throw new \RuntimeException('BKAV trả về HTTP ' . $httpCode . '. Response: ' . substr((string)$resp, 0, 300));
     }
     return (string)$resp;
 }
