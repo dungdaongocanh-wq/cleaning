@@ -46,31 +46,30 @@ $sql = "
 ";
 $stmtR = $pdo->prepare($sql);
 $stmtR->execute([$customerId, $mStart, $mEnd]);
-$rows = $stmtR->fetchAll();
+$rows = array_values($stmtR->fetchAll());
 
 if (!$rows) {
     echo json_encode(['success' => false, 'message' => 'Không có dữ liệu trong tháng này.']);
     exit;
 }
 
-$grandTotal = (float)array_sum(array_column($rows, 'total_amount'));
-$invoiceNo  = generateInvoiceNumber($customer['code'], $mEnd);
+$grandTotal  = (float)array_sum(array_column($rows, 'total_amount'));
+$invoiceNo   = generateInvoiceNumber($customer['code'], $mEnd);
+$vatRate     = (float)VAT_RATE;
+$totalVatAmt = (int)round($grandTotal * $vatRate);
 
 // ── Build danh sách hàng hoá ─────────────────────────────────
 // Thuế mỗi dòng tính riêng; dòng cuối lấy phần chênh để tổng khớp chính xác
-$itemList    = [];
-$sumLineTax  = 0;
-$rows        = array_values($rows);
-$vatRate     = (float)VAT_RATE;
-$totalVatAmt = (int)round($grandTotal * $vatRate);
+$itemList   = [];
+$sumLineTax = 0;
+$rowCount   = count($rows);
 
 foreach ($rows as $i => $row) {
     $lineAmount = (float)$row['total_amount'];
 
-    if ($i < count($rows) - 1) {
+    if ($i < $rowCount - 1) {
         $lineTax = (int)round($lineAmount * $vatRate);
     } else {
-        // Dòng cuối = phần còn lại để tránh sai lệch làm tròn
         $lineTax = $totalVatAmt - $sumLineTax;
     }
     $sumLineTax += $lineTax;
@@ -83,15 +82,18 @@ foreach ($rows as $i => $row) {
         'ItemTotalAmountWithoutTax' => $lineAmount,
         'TaxPercentage'             => $vatRate * 100,
         'TaxAmount'                 => (float)$lineTax,
-        'ItemTotalAmount'           => $lineAmount + $lineTax,
+        'ItemTotalAmount'           => $lineAmount + (float)$lineTax,
         'IsIncreaseItem'            => true,
     ];
 }
 
-// Dùng $sumLineTax (= $totalVatAmt) để đảm bảo nhất quán
-$vatAmount = (float)$sumLineTax;
+$vatAmount = (float)$sumLineTax; // = $totalVatAmt, nhất quán 100%
 
 // ── Build cấu trúc hóa đơn BKAV ─────────────────────────────
+$buyerTaxCode = ($customer['tax_code'] !== '' && $customer['tax_code'] !== null)
+    ? $customer['tax_code']
+    : null;
+
 $invoiceData = [
     'CmdType' => 100,
     'Invoice' => [
@@ -103,10 +105,9 @@ $invoiceData = [
         'ExchangeRate'                 => 1,
         'InvoiceNote'                  => $invoiceNo,
         'PaymentMethodName'            => BKAV_PAYMENT_METHOD,
-        // Bên mua — BuyerTaxCode phải là null nếu không có (không được gửi chuỗi rỗng)
+        // Bên mua
         'BuyerName'                    => $customer['contact_name'] ?? '',
-        'BuyerTaxCode'                 => ($customer['tax_code'] !== '' && $customer['tax_code'] !== null)
-                                              ? $customer['tax_code'] : null,
+        'BuyerTaxCode'                 => $buyerTaxCode,
         'BuyerUnitName'                => $customer['name'],
         'BuyerAddress'                 => $customer['address']      ?? '',
         'BuyerBankAccount'             => $customer['bank_account'] ?? '',
@@ -154,7 +155,7 @@ try {
             'success'    => false,
             'message'    => 'Phản hồi SOAP không hợp lệ.',
             'xml_errors' => $xmlErrors,
-            'raw'        => substr($soapResp, 0, 1000),
+            'raw'        => substr($soapResp, 0, 2000),
         ]);
         exit;
     }
@@ -168,7 +169,7 @@ try {
         echo json_encode([
             'success' => false,
             'message' => 'BKAV từ chối yêu cầu: ' . $faultString,
-            'raw'     => substr($soapResp, 0, 1000),
+            'raw'     => substr($soapResp, 0, 2000),
         ]);
         exit;
     }
@@ -179,14 +180,14 @@ try {
         echo json_encode([
             'success' => false,
             'message' => 'Không tìm thấy kết quả trong phản hồi SOAP.',
-            'raw'     => substr($soapResp, 0, 1000),
+            'raw'     => substr($soapResp, 0, 2000),
         ]);
         exit;
     }
 
     $resultRaw = trim((string)$nodes[0]);
 
-    // Thử parse plain JSON trước (BKAV trả plain JSON khi lỗi nhẹ)
+    // Thử parse plain JSON trước (BKAV trả plain JSON khi lỗi)
     $result = json_decode($resultRaw, true);
 
     if ($result === null) {
@@ -209,20 +210,27 @@ try {
 
     $success = isset($result['Status']) && $result['Status'] === 0;
 
-    // BKAV có thể trả lỗi trong 'Object', 'Message', hoặc 'Desc'
-    $errMsg = $result['Object'] ?? $result['Message'] ?? $result['Desc'] ?? 'Lỗi không xác định từ BKAV';
-    // Nếu Object là array (object thật), lấy Message bên trong
-    if (is_array($errMsg)) {
-        $errMsg = $result['Message'] ?? $result['Desc'] ?? 'Lỗi không xác định từ BKAV';
+    // BKAV trả lỗi trong 'Object' (string) hoặc 'Message'
+    $errMsg = null;
+    if (!$success) {
+        if (isset($result['Object']) && is_string($result['Object']) && $result['Object'] !== '') {
+            $errMsg = $result['Object'];
+        } elseif (isset($result['Message']) && $result['Message'] !== '') {
+            $errMsg = $result['Message'];
+        } else {
+            $errMsg = $result['Desc'] ?? 'Lỗi không xác định từ BKAV';
+        }
     }
 
     $returnedInvoiceNo = $result['InvoiceNo'] ?? $result['InvoiceNumber'] ?? $invoiceNo;
 
     echo json_encode([
         'success'   => $success,
-        'message'   => $success ? 'Xuất hóa đơn thành công!' : (string)$errMsg,
+        'message'   => $success ? 'Xuất hóa đơn thành công!' : $errMsg,
         'invoiceNo' => $returnedInvoiceNo,
         'data'      => $result,
+        // debug: gửi kèm payload đã gửi lên để dễ trace lỗi
+        'sent'      => $invoiceData,
     ]);
 
 } catch (Throwable $e) {
