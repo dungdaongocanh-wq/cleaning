@@ -297,9 +297,14 @@ document.getElementById('btnPushInvoice').addEventListener('click', async functi
                 + '<i class="bi bi-check-circle me-1"></i>'
                 + 'Thành công! Số HĐ: ' + (data.invoiceNo || '') + '</span>';
         } else {
-            status.innerHTML = '<span class="badge bg-danger fs-6">'
-                + '<i class="bi bi-x-circle me-1"></i>'
-                + (data.message || 'Lỗi không xác định') + '</span>';
+            const escapeHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            let errHtml = '<div class="alert alert-danger mt-2 mb-0">'
+                + '<i class="bi bi-x-circle me-1"></i><strong>' + escapeHtml(data.message || 'Lỗi không xác định') + '</strong>';
+            if (data.raw) {
+                errHtml += '<br><small class="text-muted">Raw response: <code>' + escapeHtml(data.raw.substring(0, 300)) + '</code></small>';
+            }
+            errHtml += '</div>';
+            status.innerHTML = errHtml;
         }
     } catch (err) {
         status.innerHTML = '<span class="badge bg-danger fs-6">Lỗi kết nối: ' + err.message + '</span>';
