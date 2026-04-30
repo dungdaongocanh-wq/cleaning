@@ -11,7 +11,7 @@ define('COMPANY_ADDRESS', 'Cụm Công nghiệp Hạp Lĩnh, Phường Hạp Lĩ
 define('COMPANY_PHONE',   '024.3581 0580');
 define('COMPANY_BANK',    'Ngân hàng TMCP Công thương Việt Nam - Chi nhánh Tiên Sơn');
 define('COMPANY_ACCOUNT', '(VND) 118002865005');
-define('VAT_RATE',        0);
+define('VAT_RATE',        0.10);  // 10% GTGT — khớp với serial C26TYY
 define('INVOICE_PREFIX',  'ECO');
 
 date_default_timezone_set('Asia/Ho_Chi_Minh');

@@ -87,9 +87,15 @@ foreach ($rows as $i => $row) {
     ];
 }
 
-$vatAmount = (float)$sumLineTax; // = $totalVatAmt, nhất quán 100%
+$vatAmount = (float)$sumLineTax;
 
 // ── Build cấu trúc hóa đơn BKAV ─────────────────────────────
+// BuyerName: dùng contact_name, fallback sang tên công ty nếu rỗng
+$buyerName = trim($customer['contact_name'] ?? '');
+if ($buyerName === '') {
+    $buyerName = $customer['name']; // fallback: tên công ty
+}
+
 $buyerTaxCode = ($customer['tax_code'] !== '' && $customer['tax_code'] !== null)
     ? $customer['tax_code']
     : null;
@@ -106,7 +112,7 @@ $invoiceData = [
         'InvoiceNote'                  => $invoiceNo,
         'PaymentMethodName'            => BKAV_PAYMENT_METHOD,
         // Bên mua
-        'BuyerName'                    => $customer['contact_name'] ?? '',
+        'BuyerName'                    => $buyerName,
         'BuyerTaxCode'                 => $buyerTaxCode,
         'BuyerUnitName'                => $customer['name'],
         'BuyerAddress'                 => $customer['address']      ?? '',
@@ -229,7 +235,6 @@ try {
         'message'   => $success ? 'Xuất hóa đơn thành công!' : $errMsg,
         'invoiceNo' => $returnedInvoiceNo,
         'data'      => $result,
-        // debug: gửi kèm payload đã gửi lên để dễ trace lỗi
         'sent'      => $invoiceData,
     ]);
 
