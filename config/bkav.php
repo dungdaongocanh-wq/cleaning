@@ -19,11 +19,10 @@ define('BKAV_PARTNER_GUID', '5a11f81a-1953-419d-ae9c-e0768b7f4d37');
 define('BKAV_AES_KEY', 'IjPFS9lhAijf6wbKwJD4leTwiQ+DjLxNVNVRxF9HI6o=');
 define('BKAV_AES_IV',  'ptOjlZBdVfvVXFoap1UjtQ==');
 
-// Ký hiệu mẫu số / ký hiệu hóa đơn — xem trong phần mềm BKAV eHoaDon
-// VD: 'C23TAA', '1/001', 'AA/26E' ...
-define('BKAV_INVOICE_SERIAL', '1/001');
+// Ký hiệu hóa đơn — Mẫu số: 1-C26TYY, Ký hiệu: C26TYY
+define('BKAV_INVOICE_SERIAL', 'C26TYY');
 
-// Loại hóa đơn (1 = Hóa đơn GTGT)
+// Loại hóa đơn (1 = Hóa đơn GTGT — khớp với Mẫu số 1-C26TYY)
 define('BKAV_INVOICE_TYPE', 1);
 
 // Hình thức thanh toán
