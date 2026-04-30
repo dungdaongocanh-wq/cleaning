@@ -136,8 +136,22 @@ try {
     }
 
     $resultEncrypted = (string)$nodes[0];
-    $resultJson      = bkavDecrypt($resultEncrypted);
-    $result          = json_decode($resultJson, true);
+
+    // Thử parse plain JSON trước (BKAV đôi khi trả plain JSON khi lỗi)
+    $result = json_decode($resultEncrypted, true);
+
+    // Nếu không phải plain JSON thì decrypt rồi parse
+    if ($result === null) {
+        $resultJson = bkavDecrypt($resultEncrypted);
+        $result = json_decode($resultJson, true);
+        if ($result === null) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Không parse được JSON từ BKAV. Phản hồi: ' . substr($resultJson, 0, 300),
+            ]);
+            exit;
+        }
+    }
 
     $success   = isset($result['Status']) && $result['Status'] === 0;
     $errMsg    = $result['Message'] ?? ($result['Desc'] ?? 'Lỗi không xác định từ BKAV');
@@ -173,7 +187,9 @@ function bkavDecrypt(string $data): string
     $iv  = base64_decode(BKAV_AES_IV);
     $raw = base64_decode($data);
     $dec = openssl_decrypt($raw, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
-    if ($dec === false) return $data; // fallback: trả lại nguyên nếu không giải mã được
+    if ($dec === false) {
+        throw new \RuntimeException('bkavDecrypt: openssl_decrypt thất bại — kiểm tra BKAV_AES_KEY / BKAV_AES_IV. Raw (100 ký tự đầu): ' . substr($data, 0, 100));
+    }
     $ungz = @gzdecode($dec);
     return $ungz !== false ? $ungz : $dec;
 }
