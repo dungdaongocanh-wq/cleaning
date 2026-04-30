@@ -122,11 +122,24 @@ try {
     }
 
     // Parse SOAP XML → lấy kết quả
-    $xml = @simplexml_load_string($soapResp);
+    $xml = @simplexml_load_string(trim($soapResp));
     if (!$xml) {
         echo json_encode(['success' => false, 'message' => 'Phản hồi SOAP không hợp lệ.', 'raw' => substr($soapResp, 0, 500)]);
         exit;
     }
+
+    // Kiểm tra SOAP Fault
+    $faultNodes = $xml->xpath('//*[local-name()="Fault"]');
+    if (!empty($faultNodes)) {
+        $fault = $faultNodes[0];
+        $faultStringNodes = $fault->xpath('faultstring');
+        $faultString = isset($fault->faultstring)
+            ? (string)$fault->faultstring
+            : (!empty($faultStringNodes) ? (string)$faultStringNodes[0] : 'SOAP Fault không xác định');
+        echo json_encode(['success' => false, 'message' => 'BKAV từ chối yêu cầu: ' . $faultString]);
+        exit;
+    }
+
     $xml->registerXPathNamespace('s', 'http://schemas.xmlsoap.org/soap/envelope/');
     $nodes = $xml->xpath('//*[local-name()="PublicPostInvoiceDataResult"]');
 
@@ -196,12 +209,13 @@ function bkavDecrypt(string $data): string
 
 function bkavSoapCall(string $encryptedData): string
 {
+    $soapNamespace = BKAV_WS_URL . '/';
     $xml = '<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                xmlns:xsd="http://www.w3.org/2001/XMLSchema"
                xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
-    <PublicPostInvoiceData xmlns="http://tempuri.org/">
+    <PublicPostInvoiceData xmlns="' . $soapNamespace . '">
       <PartnerGUID>' . BKAV_PARTNER_GUID . '</PartnerGUID>
       <CommandData>' . htmlspecialchars($encryptedData, ENT_XML1) . '</CommandData>
     </PublicPostInvoiceData>
@@ -213,9 +227,10 @@ function bkavSoapCall(string $encryptedData): string
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $xml,
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_ENCODING       => '',
         CURLOPT_HTTPHEADER     => [
             'Content-Type: text/xml; charset=utf-8',
-            'SOAPAction: "http://tempuri.org/PublicPostInvoiceData"',
+            'SOAPAction: "' . BKAV_WS_URL . '/PublicPostInvoiceData"',
             'Content-Length: ' . strlen($xml),
         ],
         CURLOPT_TIMEOUT        => 30,
