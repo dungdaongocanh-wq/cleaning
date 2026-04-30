@@ -56,57 +56,77 @@ if (!$rows) {
 $grandTotal = (float)array_sum(array_column($rows, 'total_amount'));
 $invoiceNo  = generateInvoiceNumber($customer['code'], $mEnd);
 
-// ── Build cấu trúc hóa đơn BKAV ─────────────────────────────
-$itemList = [];
-foreach ($rows as $row) {
+// ── Build danh sách hàng hoá ─────────────────────────────────
+// Thuế mỗi dòng tính riêng; dòng cuối lấy phần chênh để tổng khớp chính xác
+$itemList    = [];
+$sumLineTax  = 0;
+$rows        = array_values($rows);
+$vatRate     = (float)VAT_RATE;
+$totalVatAmt = (int)round($grandTotal * $vatRate);
+
+foreach ($rows as $i => $row) {
+    $lineAmount = (float)$row['total_amount'];
+
+    if ($i < count($rows) - 1) {
+        $lineTax = (int)round($lineAmount * $vatRate);
+    } else {
+        // Dòng cuối = phần còn lại để tránh sai lệch làm tròn
+        $lineTax = $totalVatAmt - $sumLineTax;
+    }
+    $sumLineTax += $lineTax;
+
     $itemList[] = [
-        'ItemName'                    => $row['model_name'],
-        'UnitName'                    => $row['unit'],
-        'UnitPrice'                   => (float)$row['unit_price_snapshot'],
-        'Quantity'                    => (float)$row['total_qty'],
-        'ItemTotalAmountWithoutTax'   => (float)$row['total_amount'],
-        'TaxPercentage'               => VAT_RATE * 100,
-        'TaxAmount'                   => 0,
-        'ItemTotalAmount'             => (float)$row['total_amount'],
-        'IsIncreaseItem'              => true,
+        'ItemName'                  => $row['model_name'],
+        'UnitName'                  => $row['unit'],
+        'UnitPrice'                 => (float)$row['unit_price_snapshot'],
+        'Quantity'                  => (float)$row['total_qty'],
+        'ItemTotalAmountWithoutTax' => $lineAmount,
+        'TaxPercentage'             => $vatRate * 100,
+        'TaxAmount'                 => (float)$lineTax,
+        'ItemTotalAmount'           => $lineAmount + $lineTax,
+        'IsIncreaseItem'            => true,
     ];
 }
 
-$vatAmount = round($grandTotal * VAT_RATE);
+// Dùng $sumLineTax (= $totalVatAmt) để đảm bảo nhất quán
+$vatAmount = (float)$sumLineTax;
 
+// ── Build cấu trúc hóa đơn BKAV ─────────────────────────────
 $invoiceData = [
     'CmdType' => 100,
     'Invoice' => [
-        'InvoiceType'                   => BKAV_INVOICE_TYPE,
-        'InvoiceSerial'                 => BKAV_INVOICE_SERIAL,
-        'InvoiceIssuedDate'             => date('Y-m-d', strtotime($mEnd)) . 'T00:00:00',
-        'CurrencyUnit'                  => 'VND',
-        'ExchangeRate'                  => 1,
-        'InvoiceNote'                   => $invoiceNo,
-        'PaymentMethodName'             => BKAV_PAYMENT_METHOD,
-        // Bên mua
-        'BuyerName'                     => $customer['contact_name'] ?? '',
-        'BuyerTaxCode'                  => $customer['tax_code']     ?? '',
-        'BuyerUnitName'                 => $customer['name'],
-        'BuyerAddress'                  => $customer['address']      ?? '',
-        'BuyerBankAccount'              => $customer['bank_account'] ?? '',
-        'BuyerBankName'                 => $customer['bank_name']    ?? '',
+        'InvoiceType'                  => BKAV_INVOICE_TYPE,
+        'InvoiceTemplateCode'          => BKAV_INVOICE_TEMPLATE,
+        'InvoiceSerial'                => BKAV_INVOICE_SERIAL,
+        'InvoiceIssuedDate'            => date('Y-m-d', strtotime($mEnd)) . 'T00:00:00',
+        'CurrencyUnit'                 => 'VND',
+        'ExchangeRate'                 => 1,
+        'InvoiceNote'                  => $invoiceNo,
+        'PaymentMethodName'            => BKAV_PAYMENT_METHOD,
+        // Bên mua — BuyerTaxCode phải là null nếu không có (không được gửi chuỗi rỗng)
+        'BuyerName'                    => $customer['contact_name'] ?? '',
+        'BuyerTaxCode'                 => ($customer['tax_code'] !== '' && $customer['tax_code'] !== null)
+                                              ? $customer['tax_code'] : null,
+        'BuyerUnitName'                => $customer['name'],
+        'BuyerAddress'                 => $customer['address']      ?? '',
+        'BuyerBankAccount'             => $customer['bank_account'] ?? '',
+        'BuyerBankName'                => $customer['bank_name']    ?? '',
         // Bên bán
-        'SellerBankAccount'             => COMPANY_ACCOUNT,
-        'SellerBankName'                => COMPANY_BANK,
+        'SellerBankAccount'            => COMPANY_ACCOUNT,
+        'SellerBankName'               => COMPANY_BANK,
         // Danh sách hàng
-        'InvoiceGroupItemList'          => $itemList,
-        // Thuế
-        'InvoiceTaxBreakdowns'          => [[
-            'TaxPercentage' => VAT_RATE * 100,
+        'InvoiceGroupItemList'         => $itemList,
+        // Thuế tổng hợp
+        'InvoiceTaxBreakdowns'         => [[
+            'TaxPercentage' => $vatRate * 100,
             'TaxableAmount' => $grandTotal,
             'TaxAmount'     => $vatAmount,
         ]],
         // Tổng tiền
-        'InvoiceTotalAmount'            => $grandTotal + $vatAmount,
-        'InvoiceTotalAmountWithoutTax'  => $grandTotal,
-        'InvoiceTotalTaxAmount'         => $vatAmount,
-        'InvoiceTotalAmountInWords'     => numberToWordsVN($grandTotal + $vatAmount),
+        'InvoiceTotalAmount'           => $grandTotal + $vatAmount,
+        'InvoiceTotalAmountWithoutTax' => $grandTotal,
+        'InvoiceTotalTaxAmount'        => $vatAmount,
+        'InvoiceTotalAmountInWords'    => numberToWordsVN($grandTotal + $vatAmount),
     ],
 ];
 
@@ -153,9 +173,8 @@ try {
         exit;
     }
 
-    // Lấy kết quả từ ExecuteCommandResult (theo WSDL: method = ExecuteCommand)
+    // Lấy kết quả từ ExecuteCommandResult
     $nodes = $xml->xpath('//*[local-name()="ExecuteCommandResult"]');
-
     if (empty($nodes)) {
         echo json_encode([
             'success' => false,
@@ -181,8 +200,6 @@ try {
     }
 
     if ($result === null) {
-        // Không decrypt được → có thể là plain-text error message từ BKAV
-        // Ví dụ: "Có lỗi xảy ra. Xin vui lòng thử lại sau..."
         echo json_encode([
             'success' => false,
             'message' => 'BKAV: ' . $resultRaw,
@@ -190,13 +207,20 @@ try {
         exit;
     }
 
-    $success           = isset($result['Status']) && $result['Status'] === 0;
-    $errMsg            = $result['Message'] ?? ($result['Desc'] ?? 'Lỗi không xác định từ BKAV');
+    $success = isset($result['Status']) && $result['Status'] === 0;
+
+    // BKAV có thể trả lỗi trong 'Object', 'Message', hoặc 'Desc'
+    $errMsg = $result['Object'] ?? $result['Message'] ?? $result['Desc'] ?? 'Lỗi không xác định từ BKAV';
+    // Nếu Object là array (object thật), lấy Message bên trong
+    if (is_array($errMsg)) {
+        $errMsg = $result['Message'] ?? $result['Desc'] ?? 'Lỗi không xác định từ BKAV';
+    }
+
     $returnedInvoiceNo = $result['InvoiceNo'] ?? $result['InvoiceNumber'] ?? $invoiceNo;
 
     echo json_encode([
         'success'   => $success,
-        'message'   => $success ? 'Xuất hóa đơn thành công!' : $errMsg,
+        'message'   => $success ? 'Xuất hóa đơn thành công!' : (string)$errMsg,
         'invoiceNo' => $returnedInvoiceNo,
         'data'      => $result,
     ]);
@@ -236,11 +260,6 @@ function bkavDecrypt(string $data): string
 
 function bkavSoapCall(string $encryptedData): string
 {
-    // Theo WSDL thực tế của BKAV (https://ws.ehoadon.vn/WSPublicEhoadon.asmx?WSDL):
-    //   - Method      : ExecuteCommand
-    //   - SOAPAction  : http://tempuri.org/ExecuteCommand
-    //   - Params      : PartnerGUID + EncryptedCommandData
-    //   - Result node : ExecuteCommandResult
     $xml = '<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                xmlns:xsd="http://www.w3.org/2001/XMLSchema"
@@ -258,7 +277,7 @@ function bkavSoapCall(string $encryptedData): string
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $xml,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING       => '',   // tự động xử lý gzip/br/deflate
+        CURLOPT_ENCODING       => '',
         CURLOPT_HTTPHEADER     => [
             'Content-Type: text/xml; charset=utf-8',
             'SOAPAction: "http://tempuri.org/ExecuteCommand"',
@@ -282,7 +301,7 @@ function bkavSoapCall(string $encryptedData): string
 }
 
 /**
- * Số tiền bằng chữ tiếng Việt (đơn giản)
+ * Số tiền bằng chữ tiếng Việt
  */
 function numberToWordsVN(float $amount): string
 {
