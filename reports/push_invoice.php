@@ -124,14 +124,14 @@ try {
     // Parse SOAP XML → lấy kết quả
     $xml = @simplexml_load_string($soapResp);
     if (!$xml) {
-        echo json_encode(['success' => false, 'message' => 'Phản hồi SOAP không hợp lệ.', 'raw' => substr($soapResp, 0, 500)]);
+        echo json_encode(['success' => false, 'message' => 'Phản hồi SOAP không hợp lệ.', 'raw' => substr($soapResp, 0, 1000)]);
         exit;
     }
     $xml->registerXPathNamespace('s', 'http://schemas.xmlsoap.org/soap/envelope/');
     $nodes = $xml->xpath('//*[local-name()="PublicPostInvoiceDataResult"]');
 
     if (empty($nodes)) {
-        echo json_encode(['success' => false, 'message' => 'Không tìm thấy kết quả trong phản hồi SOAP.', 'raw' => substr($soapResp, 0, 500)]);
+        echo json_encode(['success' => false, 'message' => 'Không tìm thấy kết quả trong phản hồi SOAP.', 'raw' => substr($soapResp, 0, 1000)]);
         exit;
     }
 
@@ -147,7 +147,8 @@ try {
         if ($result === null) {
             echo json_encode([
                 'success' => false,
-                'message' => 'Không parse được JSON từ BKAV. Phản hồi: ' . substr($resultJson, 0, 300),
+                'message' => 'Không parse được JSON từ BKAV.',
+                'raw'     => substr($resultJson, 0, 1000),
             ]);
             exit;
         }
@@ -213,6 +214,7 @@ function bkavSoapCall(string $encryptedData): string
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $xml,
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HEADER         => false,
         CURLOPT_HTTPHEADER     => [
             'Content-Type: text/xml; charset=utf-8',
             'SOAPAction: "http://tempuri.org/PublicPostInvoiceData"',
@@ -221,12 +223,16 @@ function bkavSoapCall(string $encryptedData): string
         CURLOPT_TIMEOUT        => 30,
         CURLOPT_SSL_VERIFYPEER => false,
     ]);
-    $resp = curl_exec($ch);
-    $err  = curl_error($ch);
+    $resp     = curl_exec($ch);
+    $err      = curl_error($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
     if ($resp === false) {
         throw new \RuntimeException('cURL error: ' . $err);
+    }
+    if ($httpCode !== 200) {
+        throw new \RuntimeException('BKAV trả về HTTP ' . $httpCode . '. Response: ' . substr((string)$resp, 0, 1000));
     }
     return (string)$resp;
 }
