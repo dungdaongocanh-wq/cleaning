@@ -121,12 +121,24 @@ try {
         exit;
     }
 
-    // Parse SOAP XML → lấy kết quả
-    $xml = @simplexml_load_string(trim($soapResp));
-    if (!$xml) {
-        echo json_encode(['success' => false, 'message' => 'Phản hồi SOAP không hợp lệ.', 'raw' => substr($soapResp, 0, 1000)]);
+    // Xóa BOM (UTF-8 BOM: EF BB BF) và trim whitespace trước khi parse XML
+    $soapRespClean = preg_replace('/^\xEF\xBB\xBF/', '', trim($soapResp));
+
+    // Parse SOAP XML
+    libxml_use_internal_errors(true);
+    $xml = simplexml_load_string($soapRespClean);
+    if ($xml === false) {
+        $xmlErrors = array_map(fn($e) => trim($e->message), libxml_get_errors());
+        libxml_clear_errors();
+        echo json_encode([
+            'success'    => false,
+            'message'    => 'Phản hồi SOAP không hợp lệ.',
+            'xml_errors' => $xmlErrors,
+            'raw'        => substr($soapResp, 0, 1000),
+        ]);
         exit;
     }
+    libxml_clear_errors();
 
     // Kiểm tra SOAP Fault
     $faultNodes = $xml->xpath('//*[local-name()="Fault"]');
@@ -153,23 +165,29 @@ try {
         exit;
     }
 
-    $resultEncrypted = (string)$nodes[0];
+    $resultRaw = trim((string)$nodes[0]);
 
-    // Thử parse plain JSON trước (BKAV đôi khi trả plain JSON khi lỗi)
-    $result = json_decode($resultEncrypted, true);
+    // Thử parse plain JSON trước (BKAV trả plain JSON khi lỗi nhẹ)
+    $result = json_decode($resultRaw, true);
 
-    // Nếu không phải plain JSON thì decrypt rồi parse
     if ($result === null) {
-        $resultJson = bkavDecrypt($resultEncrypted);
-        $result     = json_decode($resultJson, true);
-        if ($result === null) {
-            echo json_encode([
-                'success' => false,
-                'message' => 'Không parse được JSON từ BKAV.',
-                'raw'     => substr($resultJson, 0, 500),
-            ]);
-            exit;
+        // Thử decrypt AES rồi parse JSON
+        try {
+            $resultJson = bkavDecrypt($resultRaw);
+            $result     = json_decode($resultJson, true);
+        } catch (Throwable $decErr) {
+            $result = null;
         }
+    }
+
+    if ($result === null) {
+        // Không decrypt được → có thể là plain-text error message từ BKAV
+        // Ví dụ: "Có lỗi xảy ra. Xin vui lòng thử lại sau..."
+        echo json_encode([
+            'success' => false,
+            'message' => 'BKAV: ' . $resultRaw,
+        ]);
+        exit;
     }
 
     $success           = isset($result['Status']) && $result['Status'] === 0;
