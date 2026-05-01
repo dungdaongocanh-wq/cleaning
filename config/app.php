@@ -1,17 +1,22 @@
 <?php
 declare(strict_types=1);
 
-define('APP_NAME',    'Cleaning Management System');
-define('BASE_URL',    'https://liprologi.com/cleaning_app');
+// ── Cấu hình ứng dụng ──────────────────────────────────────────
+define('APP_NAME', 'Cleaning App');
 
-define('COMPANY_NAME',    'CÔNG TY CỔ PHẦN SẢN XUẤT VÀ CUNG ỨNG ECOTECH VINA');
-define('COMPANY_SHORT',   'ECOTECH VINA');
-define('COMPANY_TAX',     '0103586280');
-define('COMPANY_ADDRESS', 'Cụm Công nghiệp Hạp Lĩnh, Phường Hạp Lĩnh, Thành phố Bắc Ninh, Tỉnh Bắc Ninh, Việt Nam');
-define('COMPANY_PHONE',   '024.3581 0580');
-define('COMPANY_BANK',    'Ngân hàng TMCP Công thương Việt Nam - Chi nhánh Tiên Sơn');
-define('COMPANY_ACCOUNT', '(VND) 118002865005');
-define('VAT_RATE',        0.10);  // 10% GTGT — khớp với serial C26TYY
-define('INVOICE_PREFIX',  'ECO');
+// BASE_URL: chỉnh lại nếu thư mục khác tên cleaning_app
+define('BASE_URL', (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
+    . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost')
+    . rtrim(dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/\\'));
 
-date_default_timezone_set('Asia/Ho_Chi_Minh');
+// ── Session ─────────────────────────────────────────────────────
+if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'secure'   => false,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    session_start();
+}
