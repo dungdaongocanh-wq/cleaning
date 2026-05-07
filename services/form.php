@@ -38,7 +38,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'sort_order'  => (int)($_POST['sort_order'] ?? 0),
         'is_active'   => isset($_POST['is_active']) ? 1 : 0,
     ];
-    $initPrice     = str_replace(',', '', trim($_POST['init_price'] ?? ''));
+
+    // Parse đơn giá kiểu VN: "3.690" → 3690, "3,690" → 3690, "3690" → 3690
+    $rawInitPrice  = trim($_POST['init_price'] ?? '');
+    $rawInitPrice  = str_replace('.', '', $rawInitPrice); // bỏ dấu chấm ngăn nghìn
+    $rawInitPrice  = str_replace(',', '.', $rawInitPrice); // đổi phẩy thập phân → chấm
+    $initPrice     = $rawInitPrice;
     $initPriceDate = trim($_POST['init_price_date'] ?? date('Y-m-d'));
 
     if (!$data['model_code']) $errors[] = 'Mã hàng không được để trống.';
@@ -122,9 +127,10 @@ include __DIR__ . '/../includes/sidebar.php';
           <label class="form-label fw-semibold">Đơn giá</label>
           <div class="input-group">
             <input type="text" name="init_price" class="form-control text-end num-input"
-                   placeholder="3,690">
+                   placeholder="3.690">
             <span class="input-group-text">đ</span>
           </div>
+          <div class="form-text">Nhập số, VD: 3690 hoặc 3.690</div>
         </div>
         <div class="col-md-6">
           <label class="form-label fw-semibold">Hiệu lực từ ngày</label>
