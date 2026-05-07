@@ -133,7 +133,7 @@ include __DIR__ . '/../includes/sidebar.php';
                 <td>
                   <input type="number" name="qty[]"
                          class="form-control form-control-sm text-center qty-input"
-                         value="<?= formatNum((float)$line['qty']) ?>"
+                         value="<?= (float)$line['qty'] ?>"
                          min="0" step="1">
                 </td>
                 <td class="text-end fw-semibold line-total"
