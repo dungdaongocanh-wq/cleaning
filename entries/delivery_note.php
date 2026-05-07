@@ -55,6 +55,19 @@ $bbDate   = date('d/m/Y', strtotime($header['entry_date']));
       margin: 20px auto;
       padding: 15mm 18mm 15mm;
       box-shadow: 0 0 12px rgba(0,0,0,.18);
+      position: relative;
+    }
+
+    /* Logo góc phải */
+    .page-logo {
+      position: absolute;
+      top: 12mm;
+      right: 18mm;
+    }
+    .page-logo img {
+      height: 60px;
+      max-width: 160px;
+      object-fit: contain;
     }
 
     /* Tiêu đề */
@@ -78,16 +91,20 @@ $bbDate   = date('d/m/Y', strtotime($header['entry_date']));
     table.goods td.right { text-align: right; }
     .total-row td { font-weight: bold; background: #fafafa; text-align: center; }
 
-    /* Input trong bảng */
-    table.goods input.cell-input {
+    /* Input & textarea trong bảng */
+    table.goods input.cell-input,
+    table.goods textarea.cell-input {
       border: none; outline: none; background: transparent;
-      width: 100%; text-align: center; font-size: 12px;
+      width: 100%; text-align: left; font-size: 12px;
       font-family: 'Times New Roman', Times, serif;
+      resize: vertical;
     }
-    table.goods input.cell-input:focus { background: #fffde7; }
+    table.goods input.cell-input { text-align: center; }
+    table.goods input.cell-input:focus,
+    table.goods textarea.cell-input:focus { background: #fffde7; }
 
-    /* Tổng trọng lượng cuối bảng */
-    #totalNetWeight, #totalGrossWeight, #totalPallet { font-weight: bold; }
+    /* Tổng pallet */
+    #totalPallet { font-weight: bold; }
 
     /* Phần ký */
     .sign-section { margin-top: 28px; }
@@ -108,7 +125,8 @@ $bbDate   = date('d/m/Y', strtotime($header['entry_date']));
       .no-print  { display: none !important; }
       body        { background: #fff; margin: 0; }
       .page       { margin: 0; box-shadow: none; padding: 10mm 15mm; width: auto; min-height: auto; }
-      table.goods input.cell-input { border: none !important; background: transparent !important; }
+      table.goods input.cell-input  { border: none !important; background: transparent !important; }
+      table.goods textarea.cell-input { border: none !important; background: transparent !important; resize: none; }
     }
     @page { size: A4; margin: 0; }
   </style>
@@ -125,11 +143,18 @@ $bbDate   = date('d/m/Y', strtotime($header['entry_date']));
   </a>
   <span class="ms-4 text-muted small">
     <i class="bi bi-info-circle me-1"></i>
-    Điền vào các ô <span style="background:#fffde7;padding:1px 4px;border-radius:3px">trọng lượng, số pallet, ghi chú</span> trước khi in.
+    Điền vào các ô <span style="background:#fffde7;padding:1px 4px;border-radius:3px">số pallet, ghi chú</span> trước khi in.
   </span>
 </div>
 
 <div class="page">
+
+  <!-- ── Logo góc phải ──────────────────────────────────── -->
+  <div class="page-logo">
+    <img src="<?= BASE_URL ?>/assets/images/logo.png"
+         alt="Logo"
+         onerror="this.style.display='none'">
+  </div>
 
   <!-- ── Tiêu đề ─────────────────────────────────────────── -->
   <div class="text-center mb-3">
@@ -172,13 +197,12 @@ $bbDate   = date('d/m/Y', strtotime($header['entry_date']));
     <thead>
       <tr>
         <th rowspan="2" style="width:4%">STT<br>(No)</th>
-        <th rowspan="2" style="width:14%">Loại hàng<br>(Item)</th>
+        <th rowspan="2" style="width:16%">Loại hàng<br>(Item)</th>
         <th rowspan="2">Mã hàng</th>
-        <th rowspan="2" style="width:9%">Số lượng<br>(EA)</th>
-        <th rowspan="2" style="width:11%">Trọng lượng tịnh<br>(kgs)</th>
-        <th rowspan="2" style="width:12%">Tổng trọng lượng<br>(kgs)</th>
+        <th rowspan="2" style="width:10%">Số lượng<br>(EA)</th>
+        <th rowspan="2" style="width:10%">Số Giá</th>
         <th rowspan="2" style="width:11%">Số pallet/<br>box</th>
-        <th rowspan="2" style="width:14%">Ghi chú</th>
+        <th rowspan="2" style="width:30%">Ghi chú</th>
       </tr>
     </thead>
     <tbody>
@@ -189,19 +213,14 @@ $bbDate   = date('d/m/Y', strtotime($header['entry_date']));
         <td><?= e($line['model_code']) ?></td>
         <td class="num"><?= formatNum((float)$line['qty']) ?></td>
         <td class="num">
-          <input type="number" class="cell-input net-weight" min="0" step="0.01"
-                 placeholder="0" oninput="calcTotals()">
-        </td>
-        <td class="num">
-          <input type="number" class="cell-input gross-weight" min="0" step="0.01"
-                 placeholder="0" oninput="calcTotals()">
+          <input type="number" class="cell-input" min="0" step="0.01" placeholder="0">
         </td>
         <td class="num">
           <input type="number" class="cell-input pallet-count" min="0" step="1"
                  placeholder="0" oninput="calcTotals()">
         </td>
         <td>
-          <input type="text" class="cell-input" placeholder="">
+          <textarea class="cell-input" rows="2" placeholder=""></textarea>
         </td>
       </tr>
       <?php endforeach; ?>
@@ -209,8 +228,7 @@ $bbDate   = date('d/m/Y', strtotime($header['entry_date']));
       <tr class="total-row">
         <td colspan="3">TỔNG CỘNG</td>
         <td id="totalQty"><?= formatNum((float)array_sum(array_column($lines, 'qty'))) ?></td>
-        <td id="totalNetWeight">0</td>
-        <td id="totalGrossWeight">0</td>
+        <td>—</td>
         <td id="totalPallet">0</td>
         <td></td>
       </tr>
@@ -260,13 +278,9 @@ function fmt(n) {
     return new Intl.NumberFormat('vi-VN').format(Math.round(n * 100) / 100);
 }
 function calcTotals() {
-    let net = 0, gross = 0, pallet = 0;
-    document.querySelectorAll('.net-weight').forEach(function(i)    { net    += parseFloat(i.value) || 0; });
-    document.querySelectorAll('.gross-weight').forEach(function(i)  { gross  += parseFloat(i.value) || 0; });
-    document.querySelectorAll('.pallet-count').forEach(function(i)  { pallet += parseFloat(i.value) || 0; });
-    document.getElementById('totalNetWeight').textContent   = fmt(net);
-    document.getElementById('totalGrossWeight').textContent = fmt(gross);
-    document.getElementById('totalPallet').textContent      = fmt(pallet);
+    let pallet = 0;
+    document.querySelectorAll('.pallet-count').forEach(function(i) { pallet += parseFloat(i.value) || 0; });
+    document.getElementById('totalPallet').textContent = fmt(pallet);
 }
 </script>
 </body>
