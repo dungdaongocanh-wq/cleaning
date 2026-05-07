@@ -18,6 +18,22 @@ $modelIds   = $_POST['model_id']    ?? [];
 $qtys       = $_POST['qty']         ?? [];
 $unitPrices = $_POST['unit_price']  ?? [];
 
+/**
+ * Parse chuỗi số kiểu VN → float
+ * "3.690"  → 3690
+ * "3,690"  → 3690
+ * "3690"   → 3690
+ * "1.234.567" → 1234567
+ */
+function parseQty(string $raw): float {
+    $raw = trim($raw);
+    // Nếu có cả dấu chấm lẫn dấu phẩy → VN format (dấu . nghìn, dấu , thập phân)
+    // Nếu chỉ có dấu chấm và phần sau có đúng 3 chữ số → nghìn phân cách
+    $raw = str_replace('.', '', $raw);  // bỏ dấu chấm ngăn nghìn
+    $raw = str_replace(',', '.', $raw); // đổi phẩy thập phân → chấm
+    return (float)$raw;
+}
+
 // Validate
 if (!$customerId || !$entryDate) {
     setFlash('danger', 'Thiếu thông tin khách hàng hoặc ngày nhập.');
@@ -54,7 +70,7 @@ try {
     ");
     foreach ($modelIds as $i => $modelId) {
         $modelId   = (int)$modelId;
-        $qty       = (float)($qtys[$i] ?? 0);
+        $qty       = parseQty((string)($qtys[$i] ?? '0'));
         $unitPrice = (float)($unitPrices[$i] ?? 0);
         if ($modelId && $qty > 0) {
             $lineTotal = $qty * $unitPrice;

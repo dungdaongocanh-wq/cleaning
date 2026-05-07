@@ -131,10 +131,10 @@ include __DIR__ . '/../includes/sidebar.php';
                   </span>
                 </td>
                 <td>
-                  <input type="number" name="qty[]"
-                         class="form-control form-control-sm text-center qty-input"
-                         value="<?= (float)$line['qty'] ?>"
-                         min="0" step="1">
+                  <input type="text" name="qty[]"
+                         class="form-control form-control-sm text-center qty-input num-input"
+                         value="<?= formatNum((float)$line['qty']) ?>"
+                         inputmode="numeric">
                 </td>
                 <td class="text-end fw-semibold line-total"
                     data-raw="<?= $line['line_total'] ?>">
@@ -186,9 +186,9 @@ include __DIR__ . '/../includes/sidebar.php';
       <span class="price-display"></span>
     </td>
     <td>
-      <input type="number" name="qty[]"
-             class="form-control form-control-sm text-center qty-input"
-             value="0" min="0" step="1">
+      <input type="text" name="qty[]"
+             class="form-control form-control-sm text-center qty-input num-input"
+             value="0" inputmode="numeric">
     </td>
     <td class="text-end fw-semibold line-total" data-raw="0">0</td>
     <td>
@@ -242,6 +242,7 @@ async function loadServices() {
             tr.querySelector('.model-id').value                 = item.id;
             tr.querySelector('.unit-price').value               = item.unit_price;
             tr.querySelector('.price-display').textContent      = formatVN(item.unit_price);
+            tr.querySelector('.qty-input').value                = '0';
 
             tbody.appendChild(tpl);
         });
@@ -249,6 +250,8 @@ async function loadServices() {
         // Reindex lại số thứ tự tất cả dòng
         reindex();
 
+        // Init num-input cho các dòng mới
+        initNumInputs(document.getElementById('linesBody'));
         bindLineEvents();
         updateTotal();
     } catch(err) {
@@ -274,7 +277,8 @@ function bindLineEvents() {
 function onQtyInput(e) {
     const tr    = e.target.closest('tr');
     const price = parseFloat(tr.querySelector('.unit-price').value) || 0;
-    const qty   = parseFloat(e.target.value) || 0;
+    // Parse VN format: "3.690" → 3690
+    const qty   = parseVN(e.target.value);
     const total = price * qty;
     const tdTotal = tr.querySelector('.line-total');
     tdTotal.textContent  = formatVN(total);
@@ -304,6 +308,7 @@ function updateTotal() {
 }
 
 // ── Init các dòng đã có sẵn khi sửa phiếu ───────────────
+initNumInputs(document.getElementById('linesBody'));
 bindLineEvents();
 updateTotal();
 </script>
